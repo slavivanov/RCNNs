@@ -35,16 +35,23 @@ def display_image_regions(img, regions, ground_truth_box=None, figsize=(10,10)):
     # draw rectangles on the original image
     fig, ax = plt.subplots(ncols=1, nrows=1, figsize=figsize)
     ax.imshow(img)
-    for x, y, w, h in regions:
+    for region in regions:
+        x, y, w, h = region[:4]
         rect = mpatches.Rectangle(
             (x, y), w, h, fill=False, edgecolor=np.random.rand(3,1), linewidth=1)
         ax.add_patch(rect)
     
     if ground_truth_box is not None:
-        x, y, w, h = ground_truth_box
-        rect = mpatches.Rectangle(
-            (x, y), w, h, fill=False, edgecolor='red', linewidth=4, linestyle='dotted')
-        ax.add_patch(rect)
+        boxes = (ground_truth_box)
+        # single box or many boxes
+        if len(np.asarray(ground_truth_box).shape) == 1:
+            # if single, make it a single-item list
+            ground_truth_box = [ground_truth_box]
+        for box in ground_truth_box:
+            x, y, w, h = box[:4]
+            rect = mpatches.Rectangle(
+                (x, y), w, h, fill=False, edgecolor='red', linewidth=4, linestyle='dotted')
+            ax.add_patch(rect)
         
     plt.show()
 

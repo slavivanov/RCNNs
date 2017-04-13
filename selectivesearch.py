@@ -339,7 +339,7 @@ def get_selective_search_regions(img, scale=500, min_felzenszwalb_size=10, min_r
     '''
     # perform selective search
     img_lbl, regions = selective_search(
-        img, scale=scale, sigma=0.9, min_size=min_felzenszwalb_size)
+        img, scale=scale, sigma=0.5, min_size=min_felzenszwalb_size)
 
     candidates = set()
     for r in regions:
