@@ -33,35 +33,41 @@ def get_all_generator_samples(data_gen):
 
 def add_region(ax, region, gt=False, class_id_to_name=None):
     x, y, w, h = region[:4]
+    # Which element is the region class
+    class_index = 4
+    box_text = ''
+    # print the name and probability
+    # GT boxes have no probability
+    if not gt:
+        class_index = 5
+        try:
+                probability = region[4]
+                box_text += '{:.2f}'.format(probability)
+        except IndexError:
+            pass
+
+    try:
+        class_id = region[class_index]
+        if class_id_to_name:
+            class_id = class_id_to_name[class_id]
+        box_text += ' ' + class_id
+    except IndexError:
+        pass
 
     if gt:
         color = 'red'
-        rect = mpatches.Rectangle(
-            (x, y), w, h, fill=False, edgecolor=color, linewidth=4, linestyle='dotted')
+        rect_args = {'edgecolor': color, 'linewidth': 4, 'linestyle': 'dotted'}
+        text_x, text_y = x, y
     else:
         color = np.random.rand(3, 1)
-        rect = mpatches.Rectangle(
-            (x, y), w, h, fill=False, edgecolor=color, linewidth=2)
-    ax.add_patch(rect)
-
-    # print the name
-    try:
-        class_id = region[4]
-    except IndexError:
-        class_id = None
+        rect_args = {'edgecolor': color, 'linewidth': 2}
+        text_x, text_y = x + w, y + h
         
-    if class_id:
-        if class_id_to_name:
-            class_name = class_id_to_name[class_id]
-        else:
-            class_name = class_id
-        if gt:
-            ax.text(x, y, class_name, fontsize=12, backgroundcolor='white',
-                   bbox=dict(facecolor=color, alpha=0.5))
-        else:
-            ax.text(x + w, y + h, class_name, fontsize=12, backgroundcolor='white',
-                   bbox=dict(facecolor=color, alpha=0.5))
-
+    rect = mpatches.Rectangle(
+            (x, y), w, h, fill=False, **rect_args)
+    ax.add_patch(rect)
+    ax.text(text_x, text_y, box_text, fontsize=12, backgroundcolor='white',
+            bbox=dict(facecolor=color, alpha=0.5))
 
 def display_image_regions(img, regions, ground_truth_regions=None,
                           class_id_to_name=None,

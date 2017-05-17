@@ -350,13 +350,14 @@ class RCNN_Set(object):
         ''' From (x, y, w, h) to (x1, y1, x2, y2).'''
         regions_transformed = np.zeros(np.array(regions).shape)
         for index, region in enumerate(regions):
-            x1, y1, w, h = region
+            x1, y1, w, h = region[:4]
             w = max(w, 1)
             h = max(h, 1)
             x2 = x1 + w - 1
             y2 = y1 + h - 1
 
-            regions_transformed[index] = np.array([x1, y1, x2, y2])
+            extra_data = list(region[4:])
+            regions_transformed[index] = np.array([x1, y1, x2, y2] + extra_data)
         return regions_transformed
     
     
@@ -365,9 +366,10 @@ class RCNN_Set(object):
         ''' From (x1, y1, x2, y2) to (x1, y1, w, h).'''
         regions_transformed = np.zeros(np.array(regions).shape)
         for index, region in enumerate(regions):
-            x1, y1, x2, y2 = region
+            x1, y1, x2, y2 = region[:4]
             w = x2 - x1 + 1
             h = y2 - y1 + 1
 
-            regions_transformed[index] = np.array([x1, y1, w, h])
+            extra_data = list(region[4:])
+            regions_transformed[index] = np.array([x1, y1, w, h] + extra_data)
         return regions_transformed
