@@ -1,5 +1,5 @@
-import keras
-from keras.preprocessing.image import ImageDataGenerator
+#import keras
+#from keras.preprocessing.image import ImageDataGenerator
 import numpy as np
 from PIL import Image
 import bcolz
@@ -31,28 +31,54 @@ def get_all_generator_samples(data_gen):
     data_gen.reset()
     return np.asarray(samples[:data_gen.n])
 
-def display_image_regions(img, regions, ground_truth_box=None, figsize=(10,10)):
+def add_region(ax, region, gt=False, class_id_to_name=None):
+    x, y, w, h = region[:4]
+
+    if gt:
+        color = 'red'
+        rect = mpatches.Rectangle(
+            (x, y), w, h, fill=False, edgecolor=color, linewidth=4, linestyle='dotted')
+    else:
+        color = np.random.rand(3, 1)
+        rect = mpatches.Rectangle(
+            (x, y), w, h, fill=False, edgecolor=color, linewidth=2)
+    ax.add_patch(rect)
+
+    # print the name
+    try:
+        class_id = region[4]
+    except IndexError:
+        class_id = None
+        
+    if class_id:
+        if class_id_to_name:
+            class_name = class_id_to_name[class_id]
+        else:
+            class_name = class_id
+        if gt:
+            ax.text(x, y, class_name, fontsize=12, backgroundcolor='white',
+                   bbox=dict(facecolor=color, alpha=0.5))
+        else:
+            ax.text(x + w, y + h, class_name, fontsize=12, backgroundcolor='white',
+                   bbox=dict(facecolor=color, alpha=0.5))
+
+
+def display_image_regions(img, regions, ground_truth_regions=None,
+                          class_id_to_name=None,
+                          figsize=(10, 10)):
     # draw rectangles on the original image
     fig, ax = plt.subplots(ncols=1, nrows=1, figsize=figsize)
     ax.imshow(img)
     for region in regions:
-        x, y, w, h = region[:4]
-        rect = mpatches.Rectangle(
-            (x, y), w, h, fill=False, edgecolor=np.random.rand(3,1), linewidth=1)
-        ax.add_patch(rect)
-    
-    if ground_truth_box is not None:
-        boxes = (ground_truth_box)
+        add_region(ax, region, False, class_id_to_name)
+    if ground_truth_regions is not None:
+        boxes = (ground_truth_regions)
         # single box or many boxes
-        if len(np.asarray(ground_truth_box).shape) == 1:
+        if len(np.asarray(ground_truth_regions).shape) == 1:
             # if single, make it a single-item list
-            ground_truth_box = [ground_truth_box]
-        for box in ground_truth_box:
-            x, y, w, h = box[:4]
-            rect = mpatches.Rectangle(
-                (x, y), w, h, fill=False, edgecolor='red', linewidth=4, linestyle='dotted')
-            ax.add_patch(rect)
-        
+            ground_truth_regions = [ground_truth_regions]
+        for box in ground_truth_regions:
+            add_region(ax, box, True, class_id_to_name)
     plt.show()
 
 
@@ -103,3 +129,29 @@ def plots(ims, figsize=(12,6), rows=1, interp=False, titles=None):
         if titles is not None:
             sp.set_title(titles[i], fontsize=18)
         plt.imshow(ims[i], interpolation=None if interp else 'none')
+
+def get_image_size(file):
+    ''' Gets the size of an image.
+    Args:
+        file: the fullpath to the image.
+    Returns:
+        Size image, tuple of (w, h).
+    '''
+    return Image.open(file).size
+
+def resize_bbox(bbox, original_size, new_size):
+    ''' Resize a single bbox. '''
+    output_width, output_height = new_size
+    img_width, img_height = original_size
+
+    # how much to scale each bbox dimension
+    img_scale_x = output_width / img_width
+    img_scale_y = output_height / img_height
+
+    # Scale bbox
+    bbox[0] *= img_scale_x
+    bbox[1] *= img_scale_y
+    bbox[2] *= img_scale_x
+    bbox[3] *= img_scale_y
+
+    return bbox
