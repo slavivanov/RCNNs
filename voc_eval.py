@@ -6,7 +6,7 @@
 
 import xml.etree.ElementTree as ET
 import os
-import cPickle
+import pickle
 import numpy as np
 
 def parse_rec(filename):
@@ -17,13 +17,17 @@ def parse_rec(filename):
         obj_struct = {}
         obj_struct['name'] = obj.find('name').text
         obj_struct['pose'] = obj.find('pose').text
-        obj_struct['truncated'] = int(obj.find('truncated').text)
+        if obj.find('truncated'):
+            truncated = int(obj.find('truncated').text)
+        else:
+            truncated = 0
+        obj_struct['truncated'] = truncated
         obj_struct['difficult'] = int(obj.find('difficult').text)
         bbox = obj.find('bndbox')
-        obj_struct['bbox'] = [int(bbox.find('xmin').text),
-                              int(bbox.find('ymin').text),
-                              int(bbox.find('xmax').text),
-                              int(bbox.find('ymax').text)]
+        obj_struct['bbox'] = [int(float(bbox.find('xmin').text)),
+                              int(float(bbox.find('ymin').text)),
+                              int(float(bbox.find('xmax').text)),
+                              int(float(bbox.find('ymax').text))]
         objects.append(obj_struct)
 
     return objects
@@ -108,16 +112,16 @@ def voc_eval(detpath,
         for i, imagename in enumerate(imagenames):
             recs[imagename] = parse_rec(annopath.format(imagename))
             if i % 100 == 0:
-                print 'Reading annotation for {:d}/{:d}'.format(
-                    i + 1, len(imagenames))
+                print('Reading annotation for {:d}/{:d}'.format(
+                    i + 1, len(imagenames)))
         # save
-        print 'Saving cached annotations to {:s}'.format(cachefile)
-        with open(cachefile, 'w') as f:
-            cPickle.dump(recs, f)
+        print('Saving cached annotations to {:s}'.format(cachefile))
+        with open(cachefile, 'wb') as f:
+            pickle.dump(recs, f)
     else:
         # load
-        with open(cachefile, 'r') as f:
-            recs = cPickle.load(f)
+        with open(cachefile, 'rb') as f:
+            recs = pickle.load(f)
 
     # extract gt objects for this class
     class_recs = {}
@@ -127,6 +131,7 @@ def voc_eval(detpath,
         bbox = np.array([x['bbox'] for x in R])
         difficult = np.array([x['difficult'] for x in R]).astype(np.bool)
         det = [False] * len(R)
+        # npos = all easy gt bboxes
         npos = npos + sum(~difficult)
         class_recs[imagename] = {'bbox': bbox,
                                  'difficult': difficult,

@@ -211,7 +211,7 @@ class RCNN_Set(object):
         self.negative_rois = self.valid_negative_rois
         self.negative_targets = self.valid_negative_rois_targets
 
-    def reset_index(source='train'):
+    def reset_index(self, source='train'):
         self.index = 0
 
     def next_batch(self,
