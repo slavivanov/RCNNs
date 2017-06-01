@@ -49,7 +49,7 @@ def add_region(ax, region, gt=False, class_id_to_name=None):
     try:
         class_id = region[class_index]
         if class_id_to_name:
-            class_id = class_id_to_name[class_id]
+            class_id = class_id_to_name[int(class_id)]
         box_text += ' ' + class_id
     except IndexError:
         pass
@@ -59,7 +59,7 @@ def add_region(ax, region, gt=False, class_id_to_name=None):
         rect_args = {'edgecolor': color, 'linewidth': 4, 'linestyle': 'dotted'}
         text_x, text_y = x, y
     else:
-        color = np.random.rand(3, 1)
+        color = np.random.rand(3, )
         rect_args = {'edgecolor': color, 'linewidth': 2}
         text_x, text_y = x + w, y + h
         
@@ -69,14 +69,15 @@ def add_region(ax, region, gt=False, class_id_to_name=None):
     ax.text(text_x, text_y, box_text, fontsize=12, backgroundcolor='white',
             bbox=dict(facecolor=color, alpha=0.5))
 
-def display_image_regions(img, regions, ground_truth_regions=None,
+def display_image_regions(img, regions=None, ground_truth_regions=None,
                           class_id_to_name=None,
                           figsize=(10, 10)):
     # draw rectangles on the original image
     fig, ax = plt.subplots(ncols=1, nrows=1, figsize=figsize)
     ax.imshow(img)
-    for region in regions:
-        add_region(ax, region, False, class_id_to_name)
+    if regions is not None:
+        for region in regions:
+            add_region(ax, region, False, class_id_to_name)
     if ground_truth_regions is not None:
         boxes = (ground_truth_regions)
         # single box or many boxes
@@ -144,6 +145,15 @@ def get_image_size(file):
         Size image, tuple of (w, h).
     '''
     return Image.open(file).size
+
+def open_image_arr(file):
+    ''' Open an image as np array.
+    Args:
+        file: the fullpath to the image.
+    Returns:
+        np.array of the image. Sized (h, w)
+    '''
+    return np.asarray(Image.open(file))
 
 def resize_bbox(bbox, original_size, new_size):
     ''' Resize a single bbox. '''

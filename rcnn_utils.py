@@ -1,3 +1,4 @@
+import os
 import torch
 import torchvision
 from torch.autograd import Variable
@@ -34,15 +35,23 @@ def get_vgg(skip_last_layers=0):
     return vgg
 
 
-def get_vgg_conv(skip_last_layers=0, include_fc=False):
+def get_vgg_conv(skip_last_layers=0, weights_file=None):
     ''' Returns a trained and ready to go features only part of the
         VGG 16 network.
     Args:
         skip_last_layers: How many of the last layers to not include.
+        weights_file: if provided the weights are loaded from this file, 
+            otherwise use the default torch weigths for the mode.
     Returns:
         A torch Sequential model.
     '''
-    vgg = torchvision.models.vgg16(pretrained=True)
+    if weights_file:
+        vgg = torchvision.models.vgg16(pretrained=False)
+        weights = torch.load(weights_file)
+        soft_load_weights(vgg, weights)
+    else:
+        vgg = torchvision.models.vgg16(pretrained=True)
+    
     layers = [layer for layer in vgg.features]
 
     if skip_last_layers > 0:
@@ -50,14 +59,38 @@ def get_vgg_conv(skip_last_layers=0, include_fc=False):
         layers = layers[:last_index]
 
     model = torch.nn.Sequential(*layers)
+        
     return model
+
+
+def soft_load_weights(model, weights):
+    ''' Loads any weights that have the same name in model and weights. 
+        Not very safe in general but works for this case.
+    '''
+    own_state = model.state_dict()
+    for name, param in weights.items():
+        if name not in own_state:
+            continue
+        if isinstance(param, torch.nn.Parameter):
+            # backwards compatibility for serialized parameters
+            param = param.data
+        own_state[name].copy_(param)
 
 
 class Fast_RCNN_model(torch.nn.Module):
     def __init__(self, roi_size=(7, 7, 512), dropout_p=0.5, num_categories=21):
         super(Fast_RCNN_model, self).__init__()
         self.dropout_p = dropout_p
-#         self.cnn = get_vgg_conv(skip_last_layers=1)
+        
+        # weights_file='vgg16-00b39a1b.pth'
+        vgg = get_vgg()
+        self.cnn = torch.nn.Sequential(*[layer for layer in vgg.features][:-1])
+
+        # freeze the bottommost cnn layers
+        for index, param in enumerate(self.cnn.parameters()):
+            if index <= 7:
+                param.requires_grad = False
+
         self.roi_pooling = RoIPool_GPU(roi_size[0], roi_size[1],
                                    spatial_scale=1. / 16)
 #         self.roi_pooling = ROIPooling(roi_size[:2])
@@ -67,12 +100,14 @@ class Fast_RCNN_model(torch.nn.Module):
             input_size *= dim
         self.fc1 = torch.nn.Linear(input_size, 4096)
         self.fc2 = torch.nn.Linear(4096, 4096)
+        self.fc1.load_state_dict(vgg.classifier[0].state_dict())
+        self.fc2.load_state_dict(vgg.classifier[3].state_dict())
+        
         self.classifier = torch.nn.Linear(4096, num_categories)
-        # exclude he background from the number of categories
-        self.regressor = torch.nn.Linear(4096, (num_categories - 1) * 4)
+        self.regressor = torch.nn.Linear(4096, num_categories * 4)
 
-    def forward(self, cnn_features, regions):
-        #         cnn_features = self.cnn(image)
+    def forward(self, image, regions):
+        cnn_features = self.cnn(image)
         rois = self.roi_pooling.forward(cnn_features, regions)
         x = flatten(rois)
 
@@ -105,10 +140,6 @@ def fast_rcnn_weights_init(model):
         elif name == 'regressor':
             module.weight.data.normal_(0.0, 0.001)
             module.bias.data.fill_(0.)
-        elif class_name == "Linear":
-            #             nn.init.kaiming_uniform(module.weight)
-            nn.init.xavier_uniform(module.weight)
-            weight_init.constant(module.bias, 0.)
             
 
 def np_to_var(x, is_cuda=True, dtype=torch.FloatTensor):
@@ -122,40 +153,43 @@ def flatten(x):
     return x.view(x.size(0), -1)
 
 
-def loss_criterion(outputs, targets):
+def loss_criterion(outputs, labels, targets, preds_weights):
     ''' Compute classification and regression loss'''
-    true_class = targets[:, 4].long()
+#     true_class = targets[:, 4].long()
+    true_class = labels.long()
     classification_loss = F.nll_loss(outputs[0], true_class)
 
-    regression_loss_computed = regression_loss(outputs[1], targets)
+    regression_loss_computed = regression_loss(outputs[1], targets, 
+                                               preds_weights)
 
     loss = classification_loss + regression_loss_computed
     return loss
 
 
-def regression_loss(preds, targets):
+def regression_loss(preds, targets, preds_weights):
     ''' Regression Smooth L1 loss between predicted deltas for bboxes and 
         the ground truth targets.
     '''
-    true_classes = targets[:, 4].long()
-    true_deltas = targets[:, :4]
+#     true_classes = targets[:, 4].long()
+#     true_deltas = targets[:, :4]
+    true_deltas = targets
 
-    predicted_deltas = prepare_predicted_regression(preds, true_classes)
+#     predicted_deltas = prepare_predicted_regression(preds, true_classes)
+    predicted_deltas = preds * preds_weights
     return F.smooth_l1_loss(predicted_deltas, true_deltas)
     
 
 def prepare_predicted_regression(preds, true_classes, 
-                                 num_foreground_classes=20,
+                                 num_classes=21,
                                  target_dims = 4):
-    ''' Converts regression predictions from preds for all foreground
-        classes  to 
+    ''' Converts regression predictions from preds for all classes  to 
         regression predictions for only the true class for each sample
         from the batch (batch_size, 1, targets_dim).
     Args:
-        preds: Predicctions for all foreground classes 
-            (batch_size, num_foreground_classes * targets_dim)
+        preds: Predictions for all classes 
+            (batch_size, num_classes * targets_dim)
         true_classes: The true class for each sample (batch_size).
-        num_foreground_classes: How many foreground classes are there.
+        num_classes: How many classes are there.
         target_dims: The number of dimensions in each regression preds,
             e.g. we have 4 for (x, y, w, h).
     Returns:
@@ -168,9 +202,9 @@ def prepare_predicted_regression(preds, true_classes,
     indexes = true_class_stack.view((-1, 1, target_dims))
     
     # Convert regression predictions from 
-    # (batch_size, num_foreground_classes * target_dims) to
-    # (batch_size, num_foreground_classes, target_dims)
-    preds = preds.view(-1, num_foreground_classes, target_dims)
+    # (batch_size, num_classes * target_dims) to
+    # (batch_size, num_classes, target_dims)
+    preds = preds.view(-1, num_classes, target_dims)
     
     # Gather the predictions using the indexes on the 1 dimension (y).
     # Gather works like:
@@ -181,7 +215,7 @@ def prepare_predicted_regression(preds, true_classes,
     return preds_gathered.view((-1, target_dims))
 
 def save_weights(model, weights_dir, epoch):
-    weights_fname = 'weights-regression-%d.pth' % (epoch)
+    weights_fname = 'weights-%s.pth' % (epoch)
     weights_fpath = os.path.join(weights_dir, weights_fname)
     torch.save({'state_dict': model.state_dict()}, weights_fpath)
     return weights_fpath

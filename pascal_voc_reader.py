@@ -3,12 +3,8 @@ import cv2
 import xml.etree.ElementTree as ET
 
 
-def get_data(input_path, set_name='train', year='2007'):
+def get_data(input_path, set_name='train', year='2007', use_difficult=False):
     all_imgs = []
-
-    classes_count = {}
-
-    class_mapping = {}
 
     visualise = False
 
@@ -26,12 +22,13 @@ def get_data(input_path, set_name='train', year='2007'):
         try:
             with open(imgsets_path) as f:
                 for line in f:
-                    set_files.append(line.strip() + '.jpg')
+                    set_files.append(line.strip())
         except Exception as e:
             print(e)
 
-        annots = [os.path.join(annot_path, s)
-                  for s in os.listdir(annot_path)]
+        set_images = [name + '.jpg' for name in set_files]
+        annots = [os.path.join(annot_path, s + '.xml')
+                  for s in set_files]
         idx = 0
         for annot in annots:
             try:
@@ -39,7 +36,7 @@ def get_data(input_path, set_name='train', year='2007'):
 
                 et = ET.parse(annot)
                 element = et.getroot()
-
+                
                 element_objs = element.findall('object')
                 element_filename = element.find('filename').text
                 element_width = int(element.find('size').find('width').text)
@@ -48,23 +45,20 @@ def get_data(input_path, set_name='train', year='2007'):
                 if len(element_objs) > 0:
                     annotation_data = {
                         'filepath': os.path.join(imgs_path, element_filename),
+                        'filename': element_filename,
                         'width': element_width,
                         'height': element_height, 
-                        'bboxes': []}
-                    if element_filename in set_files:
-                        annotation_data['imageset'] = set_name
-                    else:
-                        annotation_data['imageset'] = 'unknown'
+                        'bboxes': [],
+                        'imageset': set_name}
+                    
 
                 for element_obj in element_objs:
-                    class_name = element_obj.find('name').text
-                    if class_name not in classes_count:
-                        classes_count[class_name] = 1
-                    else:
-                        classes_count[class_name] += 1
-
-                    if class_name not in class_mapping:
-                        class_mapping[class_name] = len(class_mapping)
+                    # Are we using difficult objects
+                    if not use_difficult:
+                        if int(element_obj.find('difficult').text) == 1:
+                            continue
+                            
+                    class_name = element_obj.find('name').text                        
 
                     obj_bbox = element_obj.find('bndbox')
                     x1 = int(round(float(obj_bbox.find('xmin').text)))
@@ -87,4 +81,4 @@ def get_data(input_path, set_name='train', year='2007'):
             except Exception as e:
                 print(e)
                 continue
-    return all_imgs, classes_count, class_mapping
+    return all_imgs

@@ -7,6 +7,25 @@
 
 import numpy as np
 
+def bbox_transform(ex_rois, gt_rois):
+    ex_widths = ex_rois[:, 2] - ex_rois[:, 0] + 1.0
+    ex_heights = ex_rois[:, 3] - ex_rois[:, 1] + 1.0
+    ex_ctr_x = ex_rois[:, 0] + 0.5 * ex_widths
+    ex_ctr_y = ex_rois[:, 1] + 0.5 * ex_heights
+
+    gt_widths = gt_rois[:, 2] - gt_rois[:, 0] + 1.0
+    gt_heights = gt_rois[:, 3] - gt_rois[:, 1] + 1.0
+    gt_ctr_x = gt_rois[:, 0] + 0.5 * gt_widths
+    gt_ctr_y = gt_rois[:, 1] + 0.5 * gt_heights
+
+    targets_dx = (gt_ctr_x - ex_ctr_x) / ex_widths
+    targets_dy = (gt_ctr_y - ex_ctr_y) / ex_heights
+    targets_dw = np.log(gt_widths / ex_widths)
+    targets_dh = np.log(gt_heights / ex_heights)
+
+    targets = np.vstack(
+        (targets_dx, targets_dy, targets_dw, targets_dh)).transpose()
+    return targets
 
 def bbox_transform_inv(boxes, deltas):
     if boxes.shape[0] == 0:
@@ -24,16 +43,16 @@ def bbox_transform_inv(boxes, deltas):
     dw = deltas[:, 2::4]
     dh = deltas[:, 3::4]
 
-    #pred_ctr_x = dx * widths[:, np.newaxis] + ctr_x[:, np.newaxis]
-    #pred_ctr_y = dy * heights[:, np.newaxis] + ctr_y[:, np.newaxis]
-    #pred_w = np.exp(dw) * widths[:, np.newaxis]
-    #pred_h = np.exp(dh) * heights[:, np.newaxis]
+    pred_ctr_x = dx * widths[:, np.newaxis] + ctr_x[:, np.newaxis]
+    pred_ctr_y = dy * heights[:, np.newaxis] + ctr_y[:, np.newaxis]
+    pred_w = np.exp(dw) * widths[:, np.newaxis]
+    pred_h = np.exp(dh) * heights[:, np.newaxis]
 
-    # uncoment for no reverse transform
-    pred_ctr_x = ctr_x[:, np.newaxis]
-    pred_ctr_y = ctr_y[:, np.newaxis]
-    pred_w = widths[:, np.newaxis]
-    pred_h = heights[:, np.newaxis]
+    # Uncomment to not apply deltas
+    #pred_ctr_x = ctr_x[:, np.newaxis]
+    #pred_ctr_y = ctr_y[:, np.newaxis]
+    #pred_w = widths[:, np.newaxis]
+    #pred_h = heights[:, np.newaxis]
     
     pred_boxes = np.zeros(deltas.shape, dtype=deltas.dtype)
     # x1

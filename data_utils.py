@@ -1,5 +1,6 @@
 import pascal_voc_reader
-from utils import *
+from lib.utils.general import *
+import numpy as np
 
 import torch
 import torchvision
@@ -321,7 +322,7 @@ class RCNN_Set(object):
             rois_pool = self.negative_rois
             targets_pool = self.negative_targets
         # All positive rois for this image
-        image_rois = self.transform_regions_bottom_right(rois_pool[image_index])
+        image_rois = xywh_to_x1y1x2y2(rois_pool[image_index])
         image_rois_targets = targets_pool[image_index]
         # shuffle rois
         shuffle_mask = np.random.permutation(len(image_rois))
@@ -332,44 +333,57 @@ class RCNN_Set(object):
             image_rois_targets)[shuffle_mask][:rois_num_limit]
         return (final_rois, final_targets)
 
-    def normalize_images(self, batch_images):
-        # Normalize the images.
-        normalize = torchvision.transforms.Normalize(mean=IMAGENET_MEAN,
-                                                     std=IMAGENET_STD)
-        images_normalized = []
-        for image in batch_images:
-            image_normalized = torchvision.transforms.Compose([
-                torchvision.transforms.ToTensor(),
-                normalize])(image)
-            images_normalized.append(image_normalized)
+def normalize_images(batch_images):
+    # Normalize the images.
+    normalize = torchvision.transforms.Normalize(mean=IMAGENET_MEAN,
+                                                 std=IMAGENET_STD)
+    images_normalized = []
+    for image in batch_images:
+        image_normalized = torchvision.transforms.Compose([
+            torchvision.transforms.ToTensor(),
+            normalize])(image)
+        images_normalized.append(image_normalized)
+    if len(images_normalized) == 1:
+        return torch.cat(images_normalized)
+    else:
+        return torch.stack(images_normalized)
 
-        return images_normalized
+def flip_boxes(boxes, image_width):
+    ''' Flips xyxy boxes horizontally.'''
+    oldx1 = boxes[:, 0].copy()
+    oldx2 = boxes[:, 2].copy()
+    boxes[:, 0] = image_width - oldx2 - 1
+    boxes[:, 2] = image_width - oldx1 - 1
+    assert (boxes[:, 2] >= boxes[:, 0]).all()
+    return boxes
 
-    @staticmethod
-    def transform_regions_bottom_right(regions):
-        ''' From (x, y, w, h) to (x1, y1, x2, y2).'''
-        regions_transformed = np.zeros(np.array(regions).shape)
-        for index, region in enumerate(regions):
-            x1, y1, w, h = region[:4]
-            w = max(w, 1)
-            h = max(h, 1)
-            x2 = x1 + w - 1
-            y2 = y1 + h - 1
+def get_new_size(im_size, min_size=600, max_size=1000):
+    ''' Get new size so that we keep aspect ration, also 
+        the shortest side is min_size, and its longest size 
+        is no more than max_size.'''
+    im_size = np.array(im_size).astype('float')
+    # Short side should be equal to min_size
+    # (including enlarging the image).
+    short_side = np.min(im_size)
+    resize_ratio = min_size / short_side
+    new_size = im_size * resize_ratio
+    # However, we want the longer side to be no longer
+    # than max_size.
+    long_side = np.max(new_size)
+    if long_side > max_size:
+        resize_ratio = max_size / long_side
+        new_size = new_size * resize_ratio
 
-            extra_data = list(region[4:])
-            regions_transformed[index] = np.array([x1, y1, x2, y2] + extra_data)
-        return regions_transformed
-    
-    
-    @staticmethod
-    def transform_regions_width_height(regions):
-        ''' From (x1, y1, x2, y2) to (x1, y1, w, h).'''
-        regions_transformed = np.zeros(np.array(regions).shape)
-        for index, region in enumerate(regions):
-            x1, y1, x2, y2 = region[:4]
-            w = x2 - x1 + 1
-            h = y2 - y1 + 1
+    return new_size.astype(int), resize_ratio
 
-            extra_data = list(region[4:])
-            regions_transformed[index] = np.array([x1, y1, w, h] + extra_data)
-        return regions_transformed
+def x1y1x2y2_to_xywh(regions):
+    ''' From (x1, y1, x2, y2) to (x1, y1, w, h).'''
+    regions_transformed = regions.copy()
+    regions_transformed[:, 2:4] = regions[:, 2:4] - regions[:, 0:2] + 1
+    return regions_transformed
+
+def xywh_to_x1y1x2y2(regions):
+    ''' From (x, y, w, h) to (x1, y1, x2, y2).'''
+    regions_transformed = regions.copy()
+    regions_transformed[:, 2:4] =  regions[:, 0:2] + regions[:, 2:4] - 1
+    return regions_transformed

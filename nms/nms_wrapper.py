@@ -4,7 +4,7 @@
 # Licensed under The MIT License [see LICENSE for details]
 # Written by Ross Girshick
 # --------------------------------------------------------
-
+#from __future__ import absolute_import
 from .nms.gpu_nms import gpu_nms
 from .nms.cpu_nms import cpu_nms
 
