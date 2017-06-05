@@ -1,6 +1,8 @@
 data/
 intermediate/
 output/
+tmp/
+.idea/
 __pycache__/
 .ipynb_checkpoints/
 *.pyc
